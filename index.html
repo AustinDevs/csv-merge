@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Demo - CSV-to-Table</title>
+</head>
+
+<body>
+  <div id="inputs" class="clearfix">
+    <input type="file" id="files" name="files[]" multiple />
+    <a></a>
+  </div>
+  <hr />
+  <output id="list">
+  </output>
+  <hr />
+  <table id="contents" style="width:100%; height:400px;" border>
+  </table>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-csv/0.8.9/jquery.csv.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/5.5.0/d3.min.js"></script>
+  <script>
+    $(document).ready(function () {
+      if (isAPIAvailable()) {
+        $('#files').bind('change', handleFileSelect);
+      }
+    });
+
+    function isAPIAvailable() {
+      // Check for the various File API support.
+      if (window.File && window.FileReader && window.FileList && window.Blob) {
+        // Great success! All the File APIs are supported.
+        return true;
+      } else {
+        // source: File API availability - http://caniuse.com/#feat=fileapi
+        // source: <output> availability - http://html5doctor.com/the-output-element/
+        document.writeln('The HTML5 APIs used in this form are only available in the following browsers:<br />');
+        // 6.0 File API & 13.0 <output>
+        document.writeln(' - Google Chrome: 13.0 or later<br />');
+        // 3.6 File API & 6.0 <output>
+        document.writeln(' - Mozilla Firefox: 6.0 or later<br />');
+        // 10.0 File API & 10.0 <output>
+        document.writeln(' - Internet Explorer: Not supported (partial support expected in 10.0)<br />');
+        // ? File API & 5.1 <output>
+        document.writeln(' - Safari: Not supported<br />');
+        // ? File API & 9.2 <output>
+        document.writeln(' - Opera: Not supported');
+        return false;
+      }
+    }
+    var output;
+    function handleFileSelect(evt) {
+      output = '';
+      processData(evt.target.files); // FileList object
+    }
+
+    function processData(files) {
+      var counter = 0;
+      var data = [];
+      Array.from(files).forEach(file => {
+        output += '<span style="font-weight:bold;">' + escape(file.name) + '</span><br />\n';
+        output += ' - FileType: ' + (file.type || 'n/a') + '<br />\n';
+        output += ' - FileSize: ' + file.size + ' bytes<br />\n';
+        output += ' - LastModified: ' + (file.lastModifiedDate ? file.lastModifiedDate.toLocaleDateString() : 'n/a') + '<br />\n';
+        var reader = new FileReader();
+        reader.readAsText(file);
+        reader.onload = function (event) {
+          data = data.concat(d3.csvParse(event.target.result));
+          if (++counter === files.length) printTable(data);
+        };
+        reader.onerror = function () { alert('Unable to read ' + file.fileName); };
+      })
+    }
+
+    function printTable(objects) {
+      var csv = $.csv.fromObjects(objects);
+      var csvArr = CSVToArray(csv);
+      var html = '';
+      csvArr.forEach(row => {
+        html += '<tr>\r\n';    
+        row.forEach(datum => {
+          html += '<td>' + datum + '</td>\r\n';
+        })
+        html += '</tr>\r\n';
+      })
+      $('#list').html(output);
+      $('#contents').html(html);
+      $('a').text('Click Here to download').attr({
+        href: window.URL.createObjectURL(new Blob([csv], { type: "data:text/csv" })),
+        download: Date.now() + ".csv"
+      })
+    }
+
+    // ref: http://stackoverflow.com/a/1293163/2343
+    // This will parse a delimited string into an array of
+    // arrays. The default delimiter is the comma, but this
+    // can be overriden in the second argument.
+    function CSVToArray(strData, strDelimiter) {
+      // Check to see if the delimiter is defined. If not,
+      // then default to comma.
+      strDelimiter = (strDelimiter || ",");
+
+      // Create a regular expression to parse the CSV values.
+      var objPattern = new RegExp(
+        (
+          // Delimiters.
+          "(\\" + strDelimiter + "|\\r?\\n|\\r|^)" +
+
+          // Quoted fields.
+          "(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|" +
+
+          // Standard fields.
+          "([^\"\\" + strDelimiter + "\\r\\n]*))"
+        ),
+        "gi"
+      );
+
+
+      // Create an array to hold our data. Give the array
+      // a default empty first row.
+      var arrData = [[]];
+
+      // Create an array to hold our individual pattern
+      // matching groups.
+      var arrMatches = null;
+
+
+      // Keep looping over the regular expression matches
+      // until we can no longer find a match.
+      while (arrMatches = objPattern.exec(strData)) {
+
+        // Get the delimiter that was found.
+        var strMatchedDelimiter = arrMatches[1];
+
+        // Check to see if the given delimiter has a length
+        // (is not the start of string) and if it matches
+        // field delimiter. If id does not, then we know
+        // that this delimiter is a row delimiter.
+        if (
+          strMatchedDelimiter.length &&
+          strMatchedDelimiter !== strDelimiter
+        ) {
+
+          // Since we have reached a new row of data,
+          // add an empty row to our data array.
+          arrData.push([]);
+
+        }
+
+        var strMatchedValue;
+
+        // Now that we have our delimiter out of the way,
+        // let's check to see which kind of value we
+        // captured (quoted or unquoted).
+        if (arrMatches[2]) {
+
+          // We found a quoted value. When we capture
+          // this value, unescape any double quotes.
+          strMatchedValue = arrMatches[2].replace(
+            new RegExp("\"\"", "g"),
+            "\""
+          );
+
+        } else {
+
+          // We found a non-quoted value.
+          strMatchedValue = arrMatches[3];
+
+        }
+
+
+        // Now that we have our value string, let's add
+        // it to the data array.
+        arrData[arrData.length - 1].push(strMatchedValue);
+      }
+
+      // Return the parsed data.
+      return (arrData);
+    }
+  </script>
+</body>
+
+</html>
